@@ -64,7 +64,8 @@ def bubble_sort(arr):
     for i in range(len(arr)):
 
         # Inner loop to compare pairs beginning with starting
-        # index and then to the right of that
+        # index and then to the right of that; remember, range
+        # is right-exclusive -- hence you only need to subtract 1
         for x in range(0, len(arr) - 1 - i):
 
             # Check each pair, and if out of order, fix
