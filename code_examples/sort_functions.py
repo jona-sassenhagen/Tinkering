@@ -1,4 +1,4 @@
-my_list = [8, 4, 3, 9, 10, 2]
+my_list = [8, 4, 3, 10, 9, 2]
 
 
 def insertion_sort(arr):
@@ -7,8 +7,8 @@ def insertion_sort(arr):
     O(n^2) complexity
     '''
 
-    # Iterate starting at the second element
-    for i in range(0, len(arr)-2):
+    # Iterate ending
+    for i in range(1, len(arr)):
 
         # Get the value we're working on, and start looking
         # immediately to the left
