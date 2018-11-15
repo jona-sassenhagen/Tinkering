@@ -1,0 +1,378 @@
+---
+title: "Regression coding and coefficient interpretation"
+author: "Darren Tanner"
+date: "11/13/2018"
+output:
+  html_document:
+    df_print: paged
+---
+```{r, include=FALSE}
+options(scipen = 7)
+```
+
+<br><hr>
+
+### The Linear Model
+
+The general form of a linear model is:
+
+$$\hat{y} = X^T\beta$$
+
+And we can expand that as:
+
+$$\hat{y} = \beta_0X_0 + \beta_1X_1 + \beta_2X_2  ...  \beta_nX_n$$
+
+<hr>
+
+### Some important terms
+
+$\beta_i$ are called *coefficients, slopes,* or *weights.*
+
+$X_i$ are columns from the *design matrix* (a.k.a. the *model matrix*).
+
+$X_i$ are also known as *predictor variables, independent variables, explanatory variables, input variables,* or (in ML speak) *features.*
+
+For virtually all regression models, $X_0$ in the design matrix is specifically a vector of *1*'s. This makes $\beta_0$ somewhat special. It is called the *intercept, constant,* or *bias term*.
+
+<hr>
+
+### Interpreting Coefficients: *The basics*
+
+One of the reasons to fit linear models rather than more accurate non-linear models is because interpretation of the terms is realtively straight-forward. 
+
+If you need to understand what factors are important in determining the response variable, regression is your friend. The $\beta-$coefficients are what you work with for this. 
+
+Let's work with this regression equation for a minute:
+
+$$\hat{y} = 9.54 + 4.9X_1 - 3.7X_2$$
+
+- The interpretation of the intercept is the expected value of *y* ($\hat{y}$ or $\mathbb{E}(y)$) *when all other values are **zero***. E.g., the expected value of y when both $X_1$ and $X_2$ are equal to 0 is 9.54.
+
+- The interpretation of other first-order coefficients (main effects, not interactions) is the expected change in *y* with a one-unit increase in the value of $X_i$, *holding all other Xs constant at zero*.
+
+    - a one-unit increase in $X_1$ corresponds to an expected increase of 4.9 in the response (holding $X_2$ constant)
+    - a one-unit increase in $X_2$ corresponds to a decrease of 3.7 in the response (holding $X_1$ constant)
+
+<hr>
+
+### Making estimates interpretable: Some considerations
+
+##### What is zero?
+
+Although the interpretation of the doesn't change across the range of X-values for main effects (though not for interactions), some values of X just don't make any sense.
+
+For example, if $X_1$ is height and $X_2$ is age, and $\hat{y}$ is the predicted value for weight of some animal in the above equation, the interpretation of the intercept would be that weight is expected to be 9.54 for an animal with a height of 0 and age of 0. It doesn't make sense to build a model like this.
+
+##### Are you interested in effect size?
+
+One interpretation of coefficients is for inferring what variable has the strongest influence on the response. Larger coefficients mean bigger effects (more change in $\hat{y}$ for a 1-unit change in X).
+
+**But the scale of the X variables matters! Xs measured on different scales can't be directly compared like this.**
+<br>
+
+##### **Solution: Mean-center and/or scale your continuous X-variables**
+
+The interpretation of the intercept now becomes *the expected value of y for an animal of average height and average age (given your sample)*. That is, $\beta_0$ is now the grand mean.
+
+If you standardize (mean center and divide by the standard deviation), the coefficient estimates are now *the expected change in y for a 1-SD increase in X.*
+
+Other scaling methods include Zero-one scaling:
+
+$$ z_i = \frac{x_i - min(x)}{max(x) - min(x)}$$
+
+Or -1/1 scaling:
+
+$$z_i = 2*\frac{x_i - min(x)}{max(x) - min(x)} - 1$$
+
+Think about how 0 would be interpreted with these two scaling methods.
+
+Centering alone will not change the slope estimates. But it will change the intercept term to be the mean of the other variables.
+
+Centering + scaling will change the slope estimates to reflect the new scale.
+
+It might not always be appropriate to do this, though. And normalization may not be the most useful scale to use. Sometimes the units are direclty interpretable. Think carefully about your data, what the variables mean, and what the scale of each variable is and make a wise choice. 
+
+Scaling and centering are *not* necessary for linear models to converge with modern optimization routines. But remember that the scale of the inputs to the model determines how the coefficients are interpreted. This is really important when interactions are modeled -- the coefficients are only interpretable if the inputs make sense.  If 0 values are not reasonable or realistic on the input variables' original scale, do something.
+
+When using regularization like Ridge and Lasso, scaling *will* impact the final model estimates.  Centering is *highly* recommended, and some sort of scaling is probably a good idea to get things onto the same scale.
+
+#### An example
+
+A job wants you to identify what will give the best ROI in terms of increased revenue:
+
+  - Increasing user ad views
+  - Increasing users' time on site
+
+Coefficients from a regression model can give you an expected increase associated with the effect of ad views and time on site. Bigger effects (a stronger positive slope) for one of the variables could tell you which to focus on.
+
+But in order for this to be informative, the two variables need to be on the same scale, and the scale needs to be interpretable. Using standard deviation-normalized coefficients might be useful, but it really depends on the amount of variability in the data.
+
+**In sum:** 
+
+- Mean-centering is almost never a bad idea.
+- But choose a scaling function that will result in one-unit increments being interpretable.
+
+<hr>
+
+## Categorical variables
+
+* Take on a finite number of discrete values
+* Often refer to categories or properties
+* Have no inherent ordering
+
+**Categorical variables need to be turned into numbers for regression.**
+
+## Dummy coding (k-1 levels)
+
+The most common strategy for turning categories into numbers for regression is to use ***dummy coding***.
+
+- This is *NOT* one-hot encoding.
+- This is not the only strategy. But it is simple and very interpretable. Other strategies are useful in certain other circumstances (see below).
+
+**Basic approach:** If your categorical variable has *k* unique values (i.e., 'levels'), turn it into *k-1* variables with 1s and 0s.
+
+**Example:**
+
+A political survey collects a number of demographic variables about respondents (income, age, number of children), as well as political party (Democrat, Republican, Green, Whatever) and whether they drink wine or not (yes, no). 
+
+- *k*(party) == 4: Recode into 3 dummy variable
+- *k*(wine) == 2: Recode into 1 dummy variable
+
+**What to do:**
+
+- Pick a "reference" level for the factor (e.g., non-drinker for wine, democrat for party -- it doesn't matter what you pick... most software defaults to alphabetical order for the level labels).
+- The reference level does not get a new variable (it's the 'minus 1' in k-1).
+- The reference level gets the value 0 for the new variables.
+- The other variables get values of 1 for observations with that level and 0 for others.
+
+### An example with data:
+
+```{r}
+# Make matrix to demostrate
+set.seed(12)
+
+some_data <- data.frame(
+  Income = floor(rnorm(300, mean = 50000, sd = 15000)),
+  Age = runif(300, min = 18, max = 77),
+  Num_Kids = rpois(300, lambda = .75),
+  Party = factor(sample(c("Dem", "Rep", "Green", "Whatever"),
+                        size = 300, replace = TRUE)),
+  Wine_drinker = factor(sample(c('Yes', 'No'),
+                               size = 300, replace = TRUE))
+)
+
+head(some_data)
+
+
+# Generate dummy variables the hard way
+# 
+# Write a function
+make_dummies <- function(df, variable){
+  # Get unique values of the factor level, and dump the first one
+  dummy_levels <- levels(df[[variable]])[2:length(levels(df[[variable]]))]
+  
+  # Make new columns for each of the levels, except the reference level
+  for (level in dummy_levels) {
+    df[paste(variable, level, sep="_")] <- ifelse(df[,variable] == level, 1, 0)
+  }
+  # Spit it out
+  return(df)
+}
+
+# Make dummies
+some_dummies <- make_dummies(some_data, 'Party')
+some_dummies <- make_dummies(some_dummies, 'Wine_drinker')
+
+head(some_dummies)
+```
+
+In reality, you will never need to write your own function to do this.
+
+- R does it for you when you call a modeling function.
+- In Python you can do:
+    - new_data = pd.get_dummies(data, **drop_first=True**). **You need to use drop_first=True** in order *not* get one-hot encoded variables.
+    - [patsy library](https://patsy.readthedocs.io/en/latest/overview.html) to generate model matrix. This library is integrated with statsmodels, and is very useful for other things, too. You can use it to generate a model matrix to feed into sklearn regression if you'd like, since it allows you to easily incorporate interactions, polynomials, etc. without raw calculating them, as well as other types of categorical contrasts (see below for examples).
+    
+## Building a regression example
+
+Let's make a *y*-variable for our above dataset to predict:
+
+```{r}
+# First, get rid of the raw Party and Wine_drinker columns,
+# since they've already been dummy coded above.  But remember, 
+# in R you don't need to do the dummy coding yourself. It will do this in the
+# background for you. Patsy for python will also apply dummy coding 
+# by default for you when generating the data matrix.
+
+model_data <- some_dummies[, -c(4:5)] # Negative indexing in R drops that index
+
+# Standardize Income, Age, and Num_kids
+model_data[,1:3] <- scale(model_data[,1:3]) # sklearn StandardScaler() will help you
+head(model_data)
+
+# Make up a y variable that's a function of Income and Age, but not kids. 
+# For political party, there will be relationships between Green and Whatever
+# parties and y, but not Dem or Rep. Wine drinking will have a very large effect.
+
+model_data$some_y <- with(model_data,
+                            -6 +       # Intercept term
+                            Income*5 + # Slope of 5
+                            Age*-2 +
+                            Party_Green*3 +
+                            Party_Whatever*-1 +
+                            Wine_drinker_Yes*500
+                          ) + rnorm(300, sd = 4.5) # Add some noise
+
+# Let's look at the model matrix, to see that an intercept actually shows up.
+# R's lm function calls model.matrix in the background before fitting the model.
+# The matrix is generated by parsing the equation in the modeling funciton call.
+head(model.matrix(some_y ~ ., data = model_data))
+
+summary(lm(some_y ~ ., data = model_data))
+```
+
+The intercept is interpreted as referring to someone:
+
+- with an average income (mean = `r round(mean(some_data$Income), 2)`) 
+- of average age (mean = `r round(mean(some_data$Age), 2)`)
+- with an average number of kids (mean = `r round(mean(some_data$Num_Kids), 2)`)
+- who is in the Democratic party
+- who does not drink wine
+
+Among people who do not drink wine, green party members have an average value of 4.09 higher than Dems, Republicans have an average of 0.77 higher than Dems, and Whatever party members have an average of .11 lower than Dems. 
+
+Wine drinkers in the democratic party (with average income, age, and # kids) are expected to have a value of -6.67 + 500.13.
+
+Wine drinkers in the green party (of average income, age, and # kids) are expected to have a value of -6.67 + 4.09 + 500.13.
+
+**General heuristic:** The coefficient value for a dummy-coded variable is the expected difference between members of that level and the reference level, holding all other variables constant at 0.
+
+<hr>
+
+## Don't one-hot encode for linear models!
+
+```{r}
+some_data$some_y <- model_data$some_y
+some_y <- model_data$some_y
+
+library(caret)
+one_hot_data <- dummyVars(some_y ~ ., data = some_data, fullRank = F)
+
+one_hot_data <- data.frame(predict(one_hot_data, some_data))
+head(model.matrix(some_y ~ ., data = one_hot_data))
+
+summary(lm(some_y ~ ., data = one_hot_data))
+```
+
+#### The model barfs on the final collinear coefficient for each categorical variable!
+
+#### **This is called the Dummy Variable Trap.**
+
+<hr>
+
+## Other categorical variable coding schemes
+
+- All turn a categorical variable with *k* unique levels into *k-1* contrasts.
+- Coding scheme chosen should reflect what you want to interpret about your coefficients (i.e., what would be most interesting to you to find out about your data)
+- Coding scheme does not change overall model fit (e.g., $R^2$, prediction accuracy), just how you interpret the coefficients
+
+#### [UCLA's website is the bible for how to do this.](https://stats.idre.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/) Their page focuses on examples in R, but the basic theory applies to any kind of (generalized) linear model. 
+
+#### [Here is another UCLA page on the same stuff that's not about the R contrast coding functions. The examples are in SPSS, but the logic underlying the computation of the new variables should be platform-agnostic.](https://stats.idre.ucla.edu/spss/faq/coding-systems-for-categorical-variables-in-regression-analysis/)
+
+<hr>
+
+### **Dummy coding (a.k.a. Treatment coding)** (as above)
+
+- New variables for each level of factor, except reference level (all 0's for all new variables)
+- Intercept is expected value for reference level
+- Coefficients are difference between that level and the reference level
+
+<hr>
+
+### **Sum coding (a.k.a. Effect coding, Sum-to-zero coding)**
+
+- Reference level gets values of -1 for all variables
+- Other levels get values of 1 for respective variable
+- Pick your least interesting group for the -1 group
+
+E.g.:
+
+```{r}
+contr.sum(levels(some_data$Party))
+```
+
+- Intercept will reflect *grand mean* across observations
+- Variable coefficient will reflect difference between that group and the grand mean
+
+```{r}
+# Apply the sum-coded contrasts to the variable's contrasts attribute
+contrasts(some_data$Party) <- contr.sum(4)
+contrasts(some_data$Wine_drinker) <- c(-1, 1)
+
+# Look at the model matrix to see what is actually being modeled,
+# and how the categorical variables are encoded
+head(model.matrix(some_y ~., data = some_data))
+
+# Fit the model and inspect the coefficients
+summary(lm(some_y ~ ., data = some_data))
+```
+
+- Grand mean is 233
+- Dems (Party1) are 1.19 below the grand mean
+- Greens (Party 2) are 2.9 above the grand mean
+- Republicans (Party 3) are 0.42 below the grand mean
+- Wine drinkers are ≈ 250 above the grand mean
+
+- Note that Wine Drinker coefficient no longer refers to Democrats, and the party variables no longer refer to non-wine drinkers like with dummy coding
+- Wine drinker refers to the average of all parties (and average income, age, and kids)
+- Model fit statistics (RSE, $R^2$) are identical to dummy coding
+
+<hr>
+
+### Helmert contrasts
+
+Set of consecutive contrasts for levels of a factor:
+
+- First vs. second levels
+- Avg. of first and second with third
+- Avg. of first three with fourth
+- etc...
+
+```{r}
+contrasts(some_data$Party) <- contr.helmert(4)
+contrasts(some_data$Party)
+```
+
+<hr>
+
+### Custom-defined contrasts
+
+Some situations call for contrasts that aren't built into R with functions. You can define them yourself.
+
+You need to be careful, though. To apply contrast weights, you’ll need to give it the inverse of your matrix of weights.
+
+For example, let’s say we wanted to compare Democrats to the mean of Republications, Greens, and Whatevers (contrast 1), and then compare Democrats to Greens (contrast 2), and then Greens to Republicans (contrast 3). Note that these are not orthogonal.
+
+To do this:
+
+1. Specfiy the weights for your contrasts (and be sure to check the order of the levels of the factor, so your weights will line up properly)
+2. Create a temporary matrix with each contrast as one row. The top row (for the constant) should be 1/j for j groups.
+3. Get the inverse of that temporary matrix.
+4. The first column of the inverse will be all 1’s. Drop that first column. The remaining columns are your contrast matrix.
+
+```{r}
+contrast_1 <- c(-1, 1/3, 1/3, 1/3)
+contrast_2 <- c(-1, 1, 0, 0)
+contrast_3 <- c(0, -1, 1, 0)
+
+(tmp <- rbind(Intercept = 1/4, contrast_1, contrast_2, contrast_3))
+(mat <- solve(tmp))
+
+contrasts(some_data$Party) <- mat[,-1]
+
+head(model.matrix(some_y ~ ., data = some_data))
+
+summary(lm(some_y ~ ., data = some_data))
+```
+
