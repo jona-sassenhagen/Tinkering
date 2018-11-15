@@ -3,6 +3,7 @@
 *.json
 *.RDS
 *redcard
+*.DAT
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
