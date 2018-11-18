@@ -1,0 +1,457 @@
+---
+title: "Picking a Regression Model"
+author: "Darren Tanner"
+date: "11/15/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Linear Models
+
+Linear regression is alternately known as the general linear model.
+
+**Linear Model:**
+
+$$\mathbb{E}(y) = X\beta$$
+
+### Assumptions of linear models
+1. Validity
+2. Additivity and linearity
+3. Independence of errors
+4. Equal variance of errors
+5. Normality of errors
+
+*Note: The **data** are not assumed to be normal; only the **residuals** are assumed to be normal.*
+
+**For binary response data, these assumptions don't hold if we fit a linear model.**
+
+### Donner Party Data
+
+```{r}
+library(arm)
+library(ggplot2)
+library(magrittr)
+library(viridis)
+library(dplyr)
+library(gridExtra)
+
+donner <- read.table("donner_party.txt",
+                     header = F,
+                     col.names = c("Age", "Sex_Male", "Survived"))
+donner$Age <- donner$Age - mean(donner$Age)
+head(donner)
+
+ggplot(donner, aes(x = Age, y = Survived, color = factor(Sex_Male))) + 
+  geom_point() + theme_minimal()
+
+donner.lm <- lm(Survived ~ Age*Sex_Male, data = donner)
+summary(donner.lm)
+
+ggplot(donner, aes(x = Age, y = Survived, color = factor(Sex_Male))) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F) + theme_minimal()
+
+plot(donner.lm, 1)
+```
+
+This model predicts a greater than 100% chance of survival for some, and lower than 0% for others. This obviously doesn't make any sense. The residuals also look horrible.
+
+<hr>
+
+## Generalized linear models
+
+We can abstract linear models to to fit response variables that do not meet the assumption of normality of residuals. 
+
+We call this abstraction the ***Generalized Linear Model (GLM)***.
+
+
+$$g(\mathbb{E}(y)) = X\beta$$
+$$\mathbb{E}(y) = g^{-1}(X\beta)$$
+
+$g$ is called a *link function*.
+
+A linear model is a special case of a GLM where $g$ is the 'identity function': $g(y) = y$.
+
+For binary response variables, we can use logistic regression. 
+
+Logistic regression is a GLM using the logit transformation as the link function: The output of the linear component (right-hand side of equation) is transformed into probabilities using the logit function (a.k.a., the log odds).
+
+$$
+logit(p) = log(\frac{p}{1-p})
+$$
+
+The inverse of the logit function is called the ***expit*** or ***logistic*** function:
+
+$$
+expit(x) = \frac{1}{1 + e^{-x}} = \frac{e^x}{e^x + 1}
+$$
+
+What do the two functions look like?
+
+```{r}
+a <- ggplot(data.frame(p = c(0.01, .99)), aes(p)) + 
+  stat_function(fun = logit) +
+  labs(title = "Logit",
+       y = expression(paste("X", beta, " (log odds-ratio)")),
+       x = "Probability") +
+  scale_x_continuous(breaks = c(0, 1)) + theme_minimal()
+b <- ggplot(data.frame(xbeta = c(-5, 5)), aes(xbeta)) + 
+  stat_function(fun = invlogit) +
+  labs(title = "Inverse Logit\n(or Logistic or Expit)",
+       x = expression(paste("X", beta, " (log odds-ratio)")),
+       y = "Probability") +
+  scale_y_continuous(breaks = c(0, 1)) + theme_minimal()
+grid.arrange(a, b, nrow = 1)
+```
+
+#### Now let's re-fit the model using logistic regression
+
+```{r}
+donner.glm <- glm(Survived ~ Age*Sex_Male, data = donner, family = binomial)
+summary(donner.glm)
+
+ggplot(donner, aes(x = Age, y = Survived, color = factor(Sex_Male))) + 
+  geom_point() + 
+  geom_smooth(method = "glm", se = F,
+              method.args = list(family = "binomial")) +
+  theme_minimal() + xlab("Age (mean-centered)") + ylab("Survival Probability")
+```
+
+### What do those coefficients mean in the model summary?
+
+This is tricky.  Those are the outputs of the linear component, before the logistic transformation is applied. I.e., they are not probabilities, but changes in log-odds (logits) per unit of change in the predictor. <???>
+
+Exponentiating predictors gets us multipliers of the odds ratio. Also, remember that the non-intercept coefficients reflect the *change from the intercept*. Interactions mean a *change in the main effect slope with respect to the interacting variable.*
+
+Remember that we've mean-centered age around the population mean, and that we've dummy-coded Sex (with female as the reference level (0) and male as the 1-coded level). 
+
+- The odds of survival for an average-aged female (the intercept) are `exp(1.07483)` = `r round(exp(coef(donner.glm)[1]), 2)`. I.e., around 3-to-1, or 75%.
+- The odds of survival for an average-aged male are `exp(-1.78927)` = `r round(exp(coef(donner.glm)[3]), 2)` times those for a female (i.e., way worse). 
+- The odds of survival for a female decrease with age: `exp(-0.19407)` = `r round(exp(coef(donner.glm)[2]), 2)` $\times$ per year.
+- The odds of survival decrease with age more slowly for men than for women: exp(-0.19407 + 0.16160) = `r round(exp(coef(donner.glm)[2] + coef(donner.glm)[4]), 2)` $\times$ per year. 
+
+#### Let's plot the relationship between probabilities and odds ratios
+
+```{r}
+prob_to_or <- function(p) (p / (1 - p))
+
+ggplot(data.frame(p = c(0.01, .99)), aes(p)) +
+  stat_function(fun = prob_to_or) +
+  labs(title = "Odds Ratio vs Probability",
+       x = "Probability",
+       y = "Odds Ratio") + theme_minimal()
+
+donner$phat <- predict(donner.glm, type = "response") %>% round(3)
+
+ggplot(donner, aes(x = Age, y = Survived, color = factor(Sex_Male), shape = "Observed")) +
+  geom_point() + 
+  geom_smooth(method = "glm", se = F, method.args = list(family = "binomial")) +
+  geom_point(aes(x = Age, y = phat, color = factor(Sex_Male), shape = "Predicted")) +
+  theme_minimal() + ggtitle("With Predicted Probabilities")
+```
+
+## More on GLMs
+
+Modified assumptions:
+
+ 1. Validity
+ 2. Additivity and linearity
+ 3. Independence of errors
+ 4. ~~Equal variance of errors~~
+ 5. ~~Normality of errors~~
+
+
+Some common distributions for GLMs and different data types [(lifted heavily from wikipedia)](https://en.wikipedia.org/wiki/Generalized_linear_model):
+
+
+Distribution | Typical Uses                                                      | Cannonical Link Function    | Support
+--------------|-------------------------------------------------------------------|-------------------|---------
+Normal/Gaussian | Continuously distributed linear outcomes                          | Identity   | Real $(-\infty, \infty)$
+Binomial        | Count of successes in N of Bernoulli trials                       | Logit          | Integer *(0... N)*
+Categorical     | Vector of integers [0, 1] indicating outcome of Bernoulli trials  | Logit       | Integer *[0, 1]*
+Poisson         | Counts of occurrences in a fixed amount of time/space             | Log           | Integer $(0, \infty)$
+Negative Binomial| Counts of occurrences similar to Poisson, but with greater variance| Log | Integer $(0, \infty)$
+
+Note that these are the *cannonical* link functions for each of the distributions. Other link functions are available. But these will get you pretty far.
+
+<hr>
+
+### GLMs are all about the expected values of the response variable. Think about what values you expect to see in $y$ to understand which GLM distribution might be an appropriate fit to your data.
+
+<hr>
+
+## Important considerations
+
+For OLS regression, mean and variance are estimated separately. So the models can be quite flexible.  For some GLM distributions, this is not the case.  The mean and variance are either identical or proportional to one another.
+
+<div class="column-left">
+- **Binomial**    
+    - $E(Y) = np$     
+    - $\mathrm{Var}(Y) = np(1 - p)$
+    <br><br>
+- **Negative Binomial**
+    - $E(Y) = \frac{pr}{1 - p}$
+    - $\mathrm{Var}(Y) = \frac{pr}{(1 - p)^2}$
+    <br><br>
+- **Poisson**
+    - $E(Y) = \lambda$
+    - $\mathrm{Var}(Y) = \lambda$
+    <br><br>
+- **Gamma**
+    - $E(Y) = \frac{\alpha}{\beta}$
+    - $\mathrm{Var}(Y) = \frac{\alpha}{\beta^2}$
+    <br><br>
+</div>
+
+Frequently, we end up observing **more variance in our data than the statistical model predicts.**
+
+This phenomenon is called **overdispersion.**
+
+In reality, many people ignore this and proceed as usual.  But your coefficient estimates will be incorrect (and their error terms VERY incorrect).
+
+One approach: use quasi-distributions, which have an additional dispersion parameter (*quasi-Poisson, quasi-Binomial, etc.*).
+
+For Poisson-distributed data, the Negative Binomial distribution is usually a good alternative. The two parameters (*r* and *p*) can more flexibly handle count data that might not fit a strict Poisson distribution.
+
+<hr>
+
+### Zero-inflation
+
+Sometimes you have not only more variance, but more zeros than your distribution would predict. 
+
+E.g., measuring number of cigarettes smoked per day.
+
+Your data are 'zero-inflated' in these cases
+
+***Zero-inflated*** models attempt to fit a 'mixture' of two distributions, presumably arising from separate processes:
+
+- One process determines whether you are a "definite zero" or not. E.g., Non-smoker or smoker. This uses a logistic model.
+- The second process applies to the non-definite-zero distribution (though these might be zeros, too, but not DEFINITE zeros) and attempts to model it using the distribution of your choice
+
+<hr>
+
+## Non-independence
+
+GLMs of all flavors **assume that your errors are independent**.  That is, there are no "groupings" within your response distribution.
+
+Common groupings:
+
+- Repeated measures within individuals (test/re-test, time series, growth rates)
+- Classrooms, clubs, neighborhoods
+- Spatial proximity
+
+*Errors are correlated within these groupings.** 
+
+E.g.: 
+
+- People correlate with themselves more than they correlate with others
+- Students in the same classroom will be more similar to each other than would be expected by chance
+- Neighbors will be more similar in socio-economic/demographic variables than would be expected based on random sampling
+- A neighborhood will be more similar to a neighboring neighborhood than a distant neighborhood and this relationship would not be expected by chance
+
+#### Standard (G)LMs cannot handle these violations of independence!!! Do not do this!!!!
+
+#### Not accounting for group membership  can lead you to REALLY WRONG conclusions!!!
+
+### Simpson's Paradox
+
+```{r}
+# Generate some parameters
+ngroups <- 25
+fixed_slope <- 10 # within each group
+n_per_group <- 50
+group_slope_sd <- 6
+
+residual_sd <- 70
+
+set.seed(1)
+
+# Dataframe starter for the dataset
+df <- expand.grid(Group = c(1:ngroups), Observation = c(1:n_per_group))
+df <- df[order(df$Group), ]
+df$Group <- factor(df$Group)
+
+# Generate a predictor variable with groups correlated with x
+df$GroupXmean <- rep(seq(0, 50, length.out = ngroups), each = n_per_group)
+df$x <- NA
+for (i in 1:ngroups){
+  df$x[df$Group == i] <- df$GroupXmean[df$Group == i] + runif(n_per_group, -20, 20)
+}
+
+# Create the y variable (intercept negatively correlated with group num/positively with x)
+df$Group_y_int <- rep(seq(2000 ,0, length.out = ngroups), each = n_per_group)
+rand_slopes <- data.frame(Group = c(1:ngroups), GroupSlope = fixed_slope + rnorm(c(1:ngroups), sd = group_slope_sd)) # Add some error to each slope
+df <- merge(df, rand_slopes)
+df$Error <- rnorm(nrow(df), sd = residual_sd)
+
+# Create y
+df$y <- with(df, Group_y_int + x*GroupSlope + Error)
+
+# Make 10% of data missing at random
+df$y[base::sample(nrow(df), floor(nrow(df)*.1))] <- NA
+df <- df[!is.na(df$y), ] # Get rid of missing values
+
+# Get number of observations per group
+print(df %>% group_by(Group) %>% summarize(N_obs = n()) %>% as.data.frame())
+
+# Black line is the regression line for the total dataset; individual
+# regression lines by group are fit in that group's color.
+ggplot(df, aes(x, y, color = Group)) + geom_point() + 
+  geom_smooth(method = "lm", se = F) +
+  theme_minimal() + 
+  scale_color_viridis(discrete = T) + geom_smooth(method = "lm", color = "black", se = F, lwd = 1.5)
+```
+
+Doing a linear model ignoring group membership gives you a negative slope, which is wrong:
+
+```{r}
+summary(lm(y ~ x, data = df))
+```
+
+## Mixed Effects regression models are appropriate for non-independent, nested, or repeated-measures data
+
+Mixed models can handle both "fixed" and "random" effects:
+
+* **Fixed** effects usually refer to parameters of interest. You've exhaustively measured these, controlled them, etc., and you want to estimate them directly.
+* **Random** effects have lots of definitions in the literature, and the line between what is a fixed effect and random effect may not always be clear.  *Some rules of thumb that I use:*
+    + If observations are nested within some larger group (e.g., multiple observations per person, multiple students in one classroom, multiple players on one team), it is probably worth modeling as a random effect.
+    + If the levels of variable are randomly sampled from the larger population, it is probably worth modeling as a random effect
+    + If there are more than 8-10 levels of the variable, it *might* be random; it might be random if you have fewer than that, but estimating procedures for groups with less than that many observations aren't good at the model might not work
+  
+Mixed models also:
+
+- Easily handle unbalanced data (missing data, unbalanced groups)
+- Easily handle repeated measures
+
+Random effects can be specified to include both slopes and intercepts: e.g., what are the fixed (parametric) effects that are there when you allow each grouping's slope and/or intercept to vary.
+
+Random effects structures can get quite complex (nested, crossed, etc.), and highly compcoslex structures can lead to failed convergence (particularly for mixed effects logistic regression). 
+
+People argue about how to model random effects all the time.  But my rule of thumb:
+
+- If there is some grouping in your sampling structure that you did not explicitly control for and where there might be expected to be variance, include intercepts for it.
+- If there is any reason to think that different levels of the grouping variable might differ in their effect for one of your fixed effects, include a random slope for that fixed effect for each level of your random effect.
+
+    **That is, build the model that makes the most sense for your data/design. Don't test whether or not a random effect is 'justified.' If your data has variance associated with the sampling procedure, include it in the model by default.**
+    
+If you have lots of random effects (multiple crossed random effects with lots of slopes and interactions), the models may not converge. Logistic mixed models are especially bad. If this happens, look at the unconverged model and find out which random terms have the least amount of variance associated with them and remove them. This is backwards-fitting from the model that is justified by your data/research design to one that is numerically stable.
+
+### Back to Simpson's Paradix with mixed models
+
+First, fit a mixed model that models $y$ with a fixed slope for $x$, as well as random intercepts for each groups:
+```{r}
+summary(lmer(y ~ x + (1|Group), data = df))
+```
+
+Notice that the fixed (population-level) slope is now positive, because groups have been taken into account: each group gets a separate intercept in the model, rather than a single intercept for the entire dataset, but the fixed intercept and slope represent the 'average' intercept across groups (with all groups constrained to having the same slope).
+
+Now add a random slope for x by group:
+
+```{r}
+summary(lmer(y ~ x + (x|Group), data = df))
+```
+
+The fixed slope remains about the same.  But notice the massive reduction in residual error in the random component. We're accounting for a lot more variance in the model now, but still getting a good estimate of the overall population slope (which is positive).
+
+## Looking at how mixed models account for imbalanced data
+
+The sleep study dataset looks at reaction time on a task over 10 days of sleep deprivation for 18 participants. I'm going to crate three more participants. One will have missing data and an intercept different from the mean, one will have low variance, and one will have high variance with a slope different from the mean.
+
+```{r}
+data("sleepstudy")
+
+full_data <-rbind(sleepstudy, data.frame(
+  Reaction = c(400, 380,
+               270, 260, 250, 240, 230, 220, 210, 200, 190, 180,
+               450, 190, 410, 130, 470, 150, 420, 150, 420, 145),
+  Days = c(0, 1, 
+           0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 
+           0, 1, 2, 4, 4, 5, 6, 7, 8, 9),
+  Subject = c(rep('373', 2), rep('374', 10), rep('375', 10))
+  )
+)
+
+```
+
+Let's plot each participant's data with regression estimates:
+
+```{r, fig.asp=1.4}
+ggplot(full_data, aes(Days, Reaction)) +
+  geom_point(size = rel(3)) +
+  facet_wrap(~Subject, ncol = 3) +
+   scale_x_continuous(breaks=seq(0,9,1)) + theme_bw() +
+  geom_smooth(method='lm', col = 'gray10', fullrange = TRUE) +
+  theme(axis.text = element_text(size = rel(1.1)), strip.text = element_text(size = rel(1.1))) +
+  ylab("Reaction Time") + xlab("Days of Sleep Deprivation")
+```
+
+As you can see, most subjects have a positive slope for days of sleep deprivation, but to varying degrees. Though 335 has a slightly negative slope.  As you can also see from the grey error shading, the slope/intercept for some participants had very, very little error associated with it (e.g., 335, 372, 309, 374), but some had considerably more uncertainty (e.g., 308, 332, 375), and the participant with only two observations had zero error (the line just connects the two points). 
+
+These slope estimates for individuals are called **no pooling** estimates. A regression model was fit to each subject individually, with no consideration for others' data. 
+
+Now let's add a line showing the intercept and slope for the full sample. This is the **complete pooling** model, where all participants' data is put into one bucket and groupings of observations (i.e., observations within participants) are ignored.
+
+```{r, fig.asp=1.4}
+summary(mod <- lm(Reaction ~ Days, data = full_data))
+intercept <- coef(mod)[1]
+slope <- coef(mod)[2]
+
+p <- ggplot(full_data, aes(Days, Reaction)) +
+  geom_point(size = rel(3)) +
+  facet_wrap(~Subject, ncol = 3) +
+  scale_x_continuous(breaks = seq(0,9,1)) + theme_bw() +
+  geom_smooth(method = 'lm', se = F, aes(color = 'no_pooling'), fullrange=TRUE) +
+  ylab("Reaction Time") + xlab("Days of Sleep Deprivation") +
+  geom_abline(aes(color = 'complete', intercept = intercept, slope = slope), show.legend = FALSE) +
+  scale_color_manual(name = "Pooling Type",
+                     values = c('no_pooling' = 'gray10', 'complete' = 'red'),
+                     labels = c('Complete Pooling', 'No Pooling')) +
+  theme(axis.text = element_text(size = rel(1.1)),
+        strip.text = element_text(size = rel(1.1)),
+        legend.position = 'top',
+        legend.text = element_text(size = rel(1.4)),
+        legend.title = element_text(size = rel(1.5), face = 'bold'))
+p
+
+```
+
+So, the complete pooling estimates tell us something about the overall data set (slope and intercept). But they ignore group membership and assume everyone's slope is identical, and that every data point is equally informative. But this is obviously not the case: some participants have more variance, so their datapoints aren't as informative about slopes as others, and data from 373 and 374 really aren't very informative at all, since we don't have enough information about them to make good estimates. If they had continued with the study and had more sleep deprivation, we might see stronger effects in them.
+
+The no pooling estimates aren't completely informative either:
+
+1. They don't tell us anything about the overall population.
+2. For people who have missing data, they just fit a perfect line connecting the two points, which is probably not a good estimate of their actual slope and intercept.
+3. For people with high variance, we should intuitively have lower confidence that their no-pooling regression line is a good true estimate for them.
+
+Let's fit a mixed model and then plot the model's estimate for each individual's coefficients along with the no and complete pooling estimates.
+
+```{r, fig.asp=1.5}
+# Mixed model with random slope and intercept for each subject
+mixed <- lmer(Reaction ~ Days + (Days|Subject), data = full_data)
+mixed_estimates <- coef(mixed)$Subject
+colnames(mixed_estimates) <- c('Intercepts', 'Slopes')
+mixed_estimates$Subject <- unique(full_data$Subject)
+
+p + geom_abline(data = mixed_estimates, aes(intercept = Intercepts,
+                slope = Slopes, color = 'partial'), show.legend = FALSE, size = 1.2) +
+    scale_color_manual(name = "Pooling Type",
+                     values = c('no_pooling' = 'gray10', 'complete' = 'red', 'partial' = 'green'),
+                     labels = c('Complete Pooling', 'No Pooling', 'Partial'))
+```
+
+What to note here is that the model estimated slopes for each participant are not identical to the no pooling estimates. In cases where a participant's slope is very similar to the population slope, the estimated slope is close to the no pooling slope. The same is true when there is little (or no) variance around the participant's slope. 
+
+Most interesting to note are the three artificial participants I created in the bottom row.
+
+For participant 373, where there was very little data and a slope and intercept that differed drastically from the population slope, the model pulled the estimated slope and intercept relatively strongly toward the population mean. The estimated intercept was lower, and the estimated slope was near-flat, despite the two data points having a clear negative slope.
+
+For participant 374, where there are a slope different from the population mean but zero variance around the slope, the model only made a minor adjustment to the no pooling slope. The estimated slope was almost identical to the no pooling slope, but pulled ever so slightly toward the mean.
+
+For participant 375, who had no missing data, but high variance around the no pooling slope, the model pulled the estimated slope and intercept relatively strongly back toward the mean.
+
+In each case, the mixed model pulled the participant's slope toward the population mean, but the amount of pull was related to the confidence the model had regarding the participant's slope, as well as the difference from the global mean. When there was low variance around the participant's slope and the slope/intercept were near the population mean, there was only very minor pull. But where there was missing data, high variance, and/or slopes/intercepts very different from the mean, the pull was much stronger.
+
+This is called **partial pooling** of variance: the mixed model uses a compromise between the no pooling and complete pooling estimates, with the strength of the no or complete pooling estimates weighted by the confidence the model had in each of the individual participant's estimates.
