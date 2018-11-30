@@ -455,3 +455,5 @@ For participant 375, who had no missing data, but high variance around the no po
 In each case, the mixed model pulled the participant's slope toward the population mean, but the amount of pull was related to the confidence the model had regarding the participant's slope, as well as the difference from the global mean. When there was low variance around the participant's slope and the slope/intercept were near the population mean, there was only very minor pull. But where there was missing data, high variance, and/or slopes/intercepts very different from the mean, the pull was much stronger.
 
 This is called **partial pooling** of variance: the mixed model uses a compromise between the no pooling and complete pooling estimates, with the strength of the no or complete pooling estimates weighted by the confidence the model had in each of the individual participant's estimates.
+
+The pulling of individual's estimates back toward the mean is called **shrinkage**, and the individuals' estimates are known as "best linear unbiased predictions" *(BLUPS)*.
