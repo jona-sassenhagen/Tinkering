@@ -23,22 +23,22 @@ def mse(X, y, coefs):
     preds = X @ coefs
     resid = preds - y
     sse = np.square(resid).sum()
-    mse = sse/n
+    mse = sse / n
 
     return mse
 
 
 def log_loss(X, y, coefs):
     '''
-    Compute the log loss function for logisttic regression,
+    Compute the log loss function for logistic regression,
     given an X matrix, y vector, and vector of coefficients.
     '''
     def sigmoid(x):
-        1/(1 + np.exp(-x))
+        1 / (1 + np.exp(-x))
 
     n = X.shape[0]
     logits = X @ coefs
     preds = sigmoid(logits)
-    loss_sum = -1*(y.T*np.log(preds) + (1-y).T*np.log(1-preds))
+    loss_sum = -1 * (y.T * np.log(preds) + (1 - y).T * np.log(1 - preds))
 
-    return loss_sum/n
+    return loss_sum / n
